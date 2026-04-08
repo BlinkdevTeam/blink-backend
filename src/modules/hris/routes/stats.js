@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const { sequelize } = require("../config/database");
+const { sequelize } = require("../../../config/database");
 
 // Total employees
 router.get("/employees/count", async (req, res) => {

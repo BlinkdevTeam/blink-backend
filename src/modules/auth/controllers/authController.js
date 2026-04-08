@@ -10,10 +10,12 @@ const {
   RefreshToken,
   LoginAttempt,
   PasswordResetToken,
-} = require("../models");
+} = require("../../../models");
 const { Op } = require("sequelize");
 
-const { sendPasswordResetEmail } = require("../utils/emailService");
+const {
+  sendPasswordResetEmail,
+} = require("../../../utils/auth/utils/emailService");
 
 const ACCESS_SECRET = process.env.ACCESS_SECRET || "access-secret";
 const REFRESH_SECRET = process.env.REFRESH_SECRET || "refresh-secret";
@@ -266,7 +268,7 @@ exports.forgotPassword = async (req, res) => {
     // Invalidate previous tokens
     await PasswordResetToken.update(
       { used_at: new Date() },
-      { where: { employee_id: employee.id, used_at: null } }
+      { where: { employee_id: employee.id, used_at: null } },
     );
 
     // Generate token
@@ -285,11 +287,7 @@ exports.forgotPassword = async (req, res) => {
 
     const resetUrl = `${process.env.FRONTEND_URL}/set-password-reset?token=${token}`;
 
-    await sendPasswordResetEmail(
-      email,
-      employee.first_name,
-      resetUrl
-    );
+    await sendPasswordResetEmail(email, employee.first_name, resetUrl);
 
     res.json({
       message: "If your email exists, a reset link will be sent.",
@@ -308,10 +306,7 @@ exports.resetPassword = async (req, res) => {
       return res.status(400).json({ message: "Invalid request" });
     }
 
-    const hashedToken = crypto
-      .createHash("sha256")
-      .update(token)
-      .digest("hex");
+    const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
 
     const record = await PasswordResetToken.findOne({
       where: { token_hash: hashedToken },
@@ -334,7 +329,7 @@ exports.resetPassword = async (req, res) => {
 
     await Employee.update(
       { password_hash },
-      { where: { id: record.employee_id } }
+      { where: { id: record.employee_id } },
     );
 
     // ✅ FIX: mark used properly
@@ -352,7 +347,10 @@ exports.resetPassword = async (req, res) => {
 exports.verifyResetToken = async (req, res) => {
   try {
     const { token } = req.body;
-    if (!token) return res.status(400).json({ valid: false, message: "No token provided" });
+    if (!token)
+      return res
+        .status(400)
+        .json({ valid: false, message: "No token provided" });
 
     const hashedToken = require("crypto")
       .createHash("sha256")
@@ -364,7 +362,9 @@ exports.verifyResetToken = async (req, res) => {
     });
 
     if (!record || record.used_at || new Date() > record.expires_at) {
-      return res.status(400).json({ valid: false, message: "Token invalid or expired" });
+      return res
+        .status(400)
+        .json({ valid: false, message: "Token invalid or expired" });
     }
 
     return res.json({ valid: true });

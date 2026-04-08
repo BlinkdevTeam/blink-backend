@@ -1,8 +1,10 @@
 "use strict";
 
 const crypto = require("crypto");
-const User = require("../models/core/user");
-const { sendInviteEmail } = require("../utils/sendInviteEmail");
+const User = require("../../../models/auth/models/core/hris_user");
+const {
+  sendInviteEmail,
+} = require("../../../utils/auth/utils/sendInviteEmail");
 
 // GET ALL USERS
 exports.getAll = async (_req, res, next) => {
@@ -109,8 +111,8 @@ exports.invite = async (req, res, next) => {
 
     // Generate a temporary password and invite token
     const temporaryPassword = crypto.randomBytes(6).toString("base64url");
-    const inviteToken        = crypto.randomBytes(32).toString("hex");
-    const inviteLink         = `${process.env.APP_BASE_URL}/accept-invite?token=${inviteToken}`;
+    const inviteToken = crypto.randomBytes(32).toString("hex");
+    const inviteLink = `${process.env.APP_BASE_URL}/accept-invite?token=${inviteToken}`;
 
     // Create the user record
     const user = await User.create({
@@ -118,7 +120,7 @@ exports.invite = async (req, res, next) => {
       email,
       password_hash: temporaryPassword, // hash this with bcrypt before saving in production
       role: role || "employee",
-      invite_token: inviteToken,         // store on your model if you need to verify later
+      invite_token: inviteToken, // store on your model if you need to verify later
     });
 
     // Send the invitation email

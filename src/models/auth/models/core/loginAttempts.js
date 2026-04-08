@@ -1,8 +1,8 @@
 "use strict";
 
 const { DataTypes } = require("sequelize");
-const { sequelize } = require("../../config/database");
-const Employee = require("./employee"); // assuming Employee model is in the same folder
+const { sequelize } = require("../../../../config/database");
+const Employee = require("./../../../hris/models/core/employee"); // assuming Employee model is in the same folder
 
 // ✅ LoginAttempt model to track failed/successful logins
 const LoginAttempt = sequelize.define(

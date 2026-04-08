@@ -1,7 +1,7 @@
 "use strict";
 
 const { DataTypes } = require("sequelize");
-const { sequelize } = require("../../config/database");
+const { sequelize } = require("../../../../config/database");
 
 const RefreshToken = sequelize.define(
   "RefreshToken",
@@ -53,7 +53,7 @@ const RefreshToken = sequelize.define(
     tableName: "refresh_tokens",
     timestamps: false,
     underscored: true,
-  }
+  },
 );
 
 module.exports = RefreshToken;

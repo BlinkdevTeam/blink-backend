@@ -1,4 +1,4 @@
-const { Department, Employee } = require("../models");
+const { Department, Employee } = require("../../../models");
 
 // GET all departments with head info
 exports.getDepartments = async (req, res) => {

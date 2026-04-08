@@ -1,9 +1,9 @@
 "use strict";
 
-const { Employee, HrisUser, Role, RolePermission } = require("../models");
-const { sequelize } = require("../config/database");
+const { Employee, HrisUser, Role, RolePermission } = require("../../../models");
+const { sequelize } = require("../../../config/database");
 const bcrypt = require("bcrypt");
-const CompanyProfile = require("../models/company/profile");
+const CompanyProfile = require("../../../models/hris/models/company/profile");
 
 // ────────────────────────────────
 // CHECK SETUP STATUS

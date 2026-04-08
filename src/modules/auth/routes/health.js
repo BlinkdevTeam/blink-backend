@@ -2,7 +2,7 @@
 
 const express = require("express");
 const router = express.Router();
-const config = require("../config"); // use centralized config
+const config = require("../../../config"); // use centralized config
 
 router.get("/health", (req, res) => {
   res.status(200).json({

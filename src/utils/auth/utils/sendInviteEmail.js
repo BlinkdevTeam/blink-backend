@@ -1,7 +1,7 @@
 "use strict";
 
 const { Resend } = require("resend");
-const { generateInviteEmailHtml } = require("../templates/inviteEmail");
+const { generateInviteEmailHtml } = require("../utils/inviteEmail");
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 

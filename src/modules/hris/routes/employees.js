@@ -1,7 +1,7 @@
 // backend/routes/employees.js
 const express = require("express");
 const router = express.Router();
-const Employee = require("../models/core/employee");
+const Employee = require("../../../models/hris/models/core/employee");
 
 // POST /api/employees
 router.post("/", async (req, res) => {

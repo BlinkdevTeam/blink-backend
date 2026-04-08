@@ -1,5 +1,5 @@
 // src/controllers/employeeController.js
-const Employee = require("../models/core/employee");
+const Employee = require("../../../models/hris/models/core/employee");
 
 // Create employee
 exports.createEmployee = async (req, res) => {

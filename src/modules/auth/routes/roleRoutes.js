@@ -3,7 +3,7 @@
 const express = require("express");
 const router = express.Router();
 
-const { Role, RolePermission } = require("../models");
+const { Role, RolePermission } = require("../../../models");
 const { createRole } = require("../controllers/roleController");
 
 // ─────────────────────────────────────────

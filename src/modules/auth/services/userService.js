@@ -1,6 +1,6 @@
 "use strict";
 
-const { User } = require("../models");
+const { User } = require("../../../models");
 
 const verifyUserEmailDomain = async (userId) => {
   const user = await User.findByPk(userId);

@@ -1,4 +1,6 @@
-const { createRoleWithPermissions } = require("../services/roleService");
+const {
+  createRoleWithPermissions,
+} = require("../../hris/services/roleService");
 
 exports.createRole = async (req, res) => {
   try {

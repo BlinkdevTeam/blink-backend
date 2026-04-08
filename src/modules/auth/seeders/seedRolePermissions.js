@@ -1,4 +1,4 @@
-const { RolePermission } = require("../models");
+const { RolePermission } = require("../../../models");
 
 const ALL_PERMISSIONS = {
   Employees: ["employees.view_all", "employees.create"],

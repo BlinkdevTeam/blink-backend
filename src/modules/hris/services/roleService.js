@@ -1,6 +1,6 @@
 "use strict";
 
-const { sequelize, Role, RolePermission } = require("../models");
+const { sequelize, Role, RolePermission } = require("../../../models");
 
 // Define all permissions
 const ALL_PERMISSIONS = {
