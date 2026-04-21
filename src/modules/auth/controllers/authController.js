@@ -357,7 +357,7 @@ exports.verifyResetToken = async (req, res) => {
       .update(token)
       .digest("hex");
 
-    const record = await require("../models").PasswordResetToken.findOne({
+    const record = await require("../../../models").PasswordResetToken.findOne({
       where: { token_hash: hashedToken },
     });
 
