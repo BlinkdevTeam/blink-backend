@@ -73,6 +73,15 @@ const TaskTimeLog = require("./hris/models/task/taskTimeLog");
 const CompanyProfile = require("./hris/models/company/profile");
 const LogsHistory = require("./hris/models/logs/history");
 
+const BookingAppointment = require("./booking/models/bookingAppointment");
+const BookingBlockedDate = require("./booking/models/bookingBlockedDate");
+const BookingBlockedRange = require("./booking/models/bookingBlockedRange");
+const BookingOpenDate = require("./booking/models/bookingOpenDate");
+const BookingPackage = require("./booking/models/bookingPackage");
+const BookingPackageAddon = require("./booking/models/bookingPackageAddon");
+const BookingPackageInclusion = require("./booking/models/bookingPackageInclusion");
+const BookingTimeBlock = require("./booking/models/bookingTimeBlock");
+
 // ─────────────────────────────────
 // RELATIONSHIPS
 // ─────────────────────────────────
@@ -200,6 +209,45 @@ Employee.hasMany(Task, { foreignKey: "assigned_to" });
 Task.belongsTo(Employee, { foreignKey: "assigned_to" });
 
 // ─────────────────────────────────
+// BOOKING SYSTEM
+// ─────────────────────────────────
+
+// Booking Package relations
+BookingPackage.hasMany(BookingPackageAddon, {
+  foreignKey: "package_id",
+  sourceKey: "id",
+});
+
+BookingPackageAddon.belongsTo(BookingPackage, {
+  foreignKey: "package_id",
+  targetKey: "id",
+});
+
+BookingPackage.hasMany(BookingPackageInclusion, {
+  foreignKey: "package_id",
+  sourceKey: "id",
+});
+
+BookingPackageInclusion.belongsTo(BookingPackage, {
+  foreignKey: "package_id",
+  targetKey: "id",
+});
+
+// Appointment relations
+BookingAppointment.belongsTo(BookingPackage, {
+  foreignKey: "service_id",
+  targetKey: "id",
+});
+
+// Optional: if you later normalize addons properly
+// BookingAppointment.belongsToMany(BookingPackageAddon, {
+//   through: "booking_appointment_addons",
+//   foreignKey: "appointment_id",
+// });
+
+// Blocked / Availability system (standalone tables, no relations needed)
+
+// ─────────────────────────────────
 // EXPORT
 // ─────────────────────────────────
 module.exports = {
@@ -251,4 +299,13 @@ module.exports = {
 
   CompanyProfile,
   LogsHistory,
+
+  BookingAppointment,
+  BookingBlockedDate,
+  BookingBlockedRange,
+  BookingOpenDate,
+  BookingPackage,
+  BookingPackageAddon,
+  BookingPackageInclusion,
+  BookingTimeBlock,
 };
