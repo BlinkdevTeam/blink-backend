@@ -6,8 +6,8 @@ const { sequelize } = require("../config/database");
 // CORE MODELS
 // ─────────────────────────────────
 const HrisUser = require("./auth/models/core/hris_user");
-const Role = require("./hris/models/core/role");
-const RolePermission = require("./hris/models/core/role_permissions");
+// const Role = require("./hris/models/core/role");
+// const RolePermission = require("./hris/models/core/role_permissions");
 const Employee = require("./hris/models/core/employee");
 const Department = require("./hris/models/core/department");
 const PasswordResetToken = require("./auth/models/core/passwordResettokens");
@@ -83,6 +83,16 @@ const BookingPackageInclusion = require("./booking/models/bookingPackageInclusio
 const BookingTimeBlock = require("./booking/models/bookingTimeBlock");
 
 // ─────────────────────────────────
+// PERMISSIONS / RBAC MODELS
+// ─────────────────────────────────
+const PermissionGroup = require("./hris/models/permissions/PermissionGroup");
+const Permission = require("./hris/models/permissions/Permission");
+const UserRole = require("./hris/models/permissions/UserRole");
+const UserPermission = require("./hris/models/permissions/UserPermission");
+const Role = require("./hris/models/permissions/Role");
+const RolePermission = require("./hris/models/permissions/RolePermission");
+
+// ─────────────────────────────────
 // RELATIONSHIPS
 // ─────────────────────────────────
 
@@ -105,11 +115,69 @@ Employee.hasMany(LoginAttempt, { foreignKey: "employee_id" });
 LoginAttempt.belongsTo(Employee, { foreignKey: "employee_id" });
 
 // ROLE
-Role.hasMany(RolePermission, { foreignKey: "role_id" });
-RolePermission.belongsTo(Role, { foreignKey: "role_id" });
+// Role.hasMany(RolePermission, { foreignKey: "role_id" });
+// RolePermission.belongsTo(Role, { foreignKey: "role_id" });
 
 HrisUser.belongsTo(Role, { foreignKey: "role_id" });
 Role.hasMany(HrisUser, { foreignKey: "role_id" });
+
+// ─────────────────────────────────
+// PERMISSIONS / RBAC
+// ─────────────────────────────────
+
+// Permission Group → Permissions
+PermissionGroup.hasMany(Permission, {
+  foreignKey: "group_id",
+});
+
+Permission.belongsTo(PermissionGroup, {
+  foreignKey: "group_id",
+});
+
+// Role ↔ Permission (Many-to-Many)
+Role.belongsToMany(Permission, {
+  through: RolePermission,
+  foreignKey: "role_id",
+  otherKey: "permission_id",
+  as: "permissions",
+});
+
+Permission.belongsToMany(Role, {
+  through: RolePermission,
+  foreignKey: "permission_id",
+  otherKey: "role_id",
+  as: "roles",
+});
+
+// User ↔ Role (Many-to-Many)
+// HrisUser.belongsToMany(Role, {
+//   through: UserRole,
+//   foreignKey: "user_id",
+//   otherKey: "role_id",
+//   as: "roles",
+// });
+
+// Role.belongsToMany(HrisUser, {
+//   through: UserRole,
+//   foreignKey: "role_id",
+//   otherKey: "user_id",
+//   as: "users",
+// });
+
+// User ↔ Permission Overrides
+HrisUser.belongsToMany(Permission, {
+  through: UserPermission,
+  foreignKey: "user_id",
+  otherKey: "permission_id",
+  as: "custom_permissions",
+});
+
+Permission.belongsToMany(HrisUser, {
+  through: UserPermission,
+  foreignKey: "permission_id",
+  otherKey: "user_id",
+  as: "users_with_permission",
+});
 
 // PAYROLL
 Employee.hasMany(EmployeeCompensation, { foreignKey: "employee_id" });
@@ -253,9 +321,16 @@ BookingAppointment.belongsTo(BookingPackage, {
 module.exports = {
   sequelize,
 
-  HrisUser,
   Role,
   RolePermission,
+  PermissionGroup,
+  Permission,
+  UserRole,
+  UserPermission,
+
+  HrisUser,
+  // Role,
+  // RolePermission,
   Employee,
   Department,
   PasswordResetToken,

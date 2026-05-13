@@ -22,10 +22,10 @@ const HrisUser = sequelize.define(
       },
     },
 
-    // ✅ NEW: use role_id instead of ENUM
+    // ✅ FIX: THIS MUST EXIST in DB
     role_id: {
       type: DataTypes.UUID,
-      allowNull: true,
+      allowNull: false,
       references: {
         model: "roles",
         key: "id",

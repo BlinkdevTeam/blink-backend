@@ -1,28 +1,61 @@
 "use strict";
 
-const { Employee, HrisUser, Role, RolePermission } = require("../../../models");
+const {
+  Employee,
+  HrisUser,
+  Role,
+  RolePermission,
+  Permission,
+} = require("../../../models");
+
 const { sequelize } = require("../../../config/database");
 const bcrypt = require("bcrypt");
+
 const CompanyProfile = require("../../../models/hris/models/company/profile");
+
+// ────────────────────────────────
+// ALL SYSTEM PERMISSIONS
+// ────────────────────────────────
 
 // ────────────────────────────────
 // CHECK SETUP STATUS
 // ────────────────────────────────
 exports.getSetupStatus = async (req, res, next) => {
   try {
+    // Find super admin role
     const superAdminRole = await Role.findOne({
-      where: { name: "super_admin" },
-    });
-    if (!superAdminRole) return res.json({ exists: false });
-
-    const admin = await HrisUser.findOne({
-      where: { role_id: superAdminRole.id },
+      where: {
+        code: "super_admin",
+      },
     });
 
-    res.json({ exists: !!admin });
+    // No role yet = setup not completed
+    if (!superAdminRole) {
+      return res.json({
+        success: true,
+        exists: false,
+      });
+    }
+
+    // Check if a user already has this role
+    const adminUser = await HrisUser.findOne({
+      where: {
+        role_id: superAdminRole.id,
+      },
+    });
+
+    return res.json({
+      success: true,
+      exists: !!adminUser,
+    });
   } catch (err) {
-    console.error("Error getting setup status:", err);
-    next(err);
+    console.error("Error checking setup status:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to check setup status",
+      error: err.message,
+    });
   }
 };
 
@@ -30,169 +63,235 @@ exports.getSetupStatus = async (req, res, next) => {
 // CREATE INITIAL SETUP
 // ────────────────────────────────
 exports.createSetup = async (req, res, next) => {
-  const t = await sequelize.transaction();
+  const transaction = await sequelize.transaction();
 
   try {
     const { company, admin } = req.body;
 
-    // Check if super admin already exists
-    const superAdminRole = await Role.findOne({
-      where: { name: "super_admin" },
-      transaction: t,
-    });
-    const existingAdmin = superAdminRole
-      ? await HrisUser.findOne({
-          where: { role_id: superAdminRole.id },
-          transaction: t,
-        })
-      : null;
+    // ────────────────────────────────
+    // VALIDATIONS
+    // ────────────────────────────────
 
-    if (existingAdmin) {
-      await t.rollback();
-      return res
-        .status(403)
-        .json({ success: false, message: "Setup already completed" });
+    if (!company || !admin) {
+      await transaction.rollback();
+
+      return res.status(400).json({
+        success: false,
+        message: "Company and admin data are required",
+      });
     }
 
-    // Hash password
+    if (
+      !admin.firstName ||
+      !admin.lastName ||
+      !admin.email ||
+      !admin.password
+    ) {
+      await transaction.rollback();
+
+      return res.status(400).json({
+        success: false,
+        message: "Incomplete admin information",
+      });
+    }
+
+    // ────────────────────────────────
+    // CHECK IF SETUP ALREADY EXISTS
+    // ────────────────────────────────
+
+    let superAdminRole = await Role.findOne({
+      where: {
+        code: "super_admin",
+      },
+      transaction,
+    });
+
+    if (superAdminRole) {
+      const existingAdmin = await HrisUser.findOne({
+        where: {
+          role_id: superAdminRole.id,
+        },
+        transaction,
+      });
+
+      if (existingAdmin) {
+        await transaction.rollback();
+
+        return res.status(403).json({
+          success: false,
+          message: "Initial setup already completed",
+        });
+      }
+    }
+
+    // ────────────────────────────────
+    // CREATE ROLE IF MISSING
+    // ────────────────────────────────
+
+    if (!superAdminRole) {
+      superAdminRole = await Role.create(
+        {
+          name: "Super Admin",
+          code: "super_admin",
+          description: "System Super Administrator",
+          is_system: true,
+        },
+        { transaction },
+      );
+    }
+
+    // ────────────────────────────────
+    // ASSIGN ALL PERMISSIONS
+    // ────────────────────────────────
+
+    const existingPermissions = await RolePermission.count({
+      where: {
+        role_id: superAdminRole.id,
+      },
+      transaction,
+    });
+
+    if (existingPermissions === 0) {
+      // fetch all permissions
+      const allPermissions = await Permission.findAll({
+        transaction,
+      });
+
+      // prevent empty insert
+      if (allPermissions.length > 0) {
+        const permsToInsert = allPermissions.map((perm) => ({
+          role_id: superAdminRole.id,
+          permission_id: perm.id,
+        }));
+
+        await RolePermission.bulkCreate(permsToInsert, {
+          transaction,
+        });
+      }
+    }
+
+    // ────────────────────────────────
+    // HASH PASSWORD
+    // ────────────────────────────────
+
     const hashedPassword = await bcrypt.hash(admin.password, 10);
 
-    // Create employee
+    // ────────────────────────────────
+    // GENERATE EMPLOYEE CODE
+    // ────────────────────────────────
+
+    const employeeCount = await Employee.count({
+      transaction,
+    });
+
+    const employeeCode = `EMP-${String(employeeCount + 1).padStart(4, "0")}`;
+
+    // ────────────────────────────────
+    // CHECK EMAIL DUPLICATE
+    // ────────────────────────────────
+
+    const existingEmployee = await Employee.findOne({
+      where: {
+        email: admin.email,
+      },
+      transaction,
+    });
+
+    if (existingEmployee) {
+      await transaction.rollback();
+
+      return res.status(409).json({
+        success: false,
+        message: "Email already exists",
+      });
+    }
+
+    // ────────────────────────────────
+    // CREATE EMPLOYEE
+    // ────────────────────────────────
+
     const employee = await Employee.create(
       {
-        employee_code: "EMP-0001",
+        employee_code: employeeCode,
+
         first_name: admin.firstName,
         last_name: admin.lastName,
         email: admin.email,
+
         role_title: "Super Admin",
+
         employment_type: "full_time",
+
         hire_date: new Date(),
+
         password_hash: hashedPassword,
+
         is_active: true,
         must_change_password: false,
       },
-      { transaction: t },
+      { transaction },
     );
 
-    // Create super_admin role if it doesn't exist
-    let superAdmin = superAdminRole;
-    if (!superAdminRole) {
-      superAdmin = await Role.create(
-        { name: "super_admin", is_system: true },
-        { transaction: t },
-      );
+    // ────────────────────────────────
+    // CREATE HRIS USER
+    // ────────────────────────────────
 
-      // Seed all permissions
-      const ALL_PERMISSIONS = {
-        Employees: [
-          "employees.view_all",
-          "employees.view_dept",
-          "employees.view_own",
-          "employees.create",
-          "employees.edit_all",
-          "employees.edit_own",
-          "employees.deactivate",
-        ],
-        Payroll: [
-          "payroll.view_all",
-          "payroll.view_own",
-          "payroll.run",
-          "payroll.adjust",
-          "payroll.configure",
-        ],
-        Attendance: [
-          "attendance.view_all",
-          "attendance.view_dept",
-          "attendance.view_own",
-          "attendance.correct",
-          "attendance.correct_dept",
-        ],
-        Leave: [
-          "leave.view_all",
-          "leave.view_dept",
-          "leave.view_own",
-          "leave.file",
-          "leave.approve_all",
-          "leave.approve_dept",
-          "leave.configure",
-        ],
-        Offset: [
-          "offset.view_all",
-          "offset.view_own",
-          "offset.create",
-          "offset.approve",
-          "offset.void",
-        ],
-        Recruitment: [
-          "recruitment.view",
-          "recruitment.manage_jobs",
-          "recruitment.manage_applicants",
-          "recruitment.schedule_interviews",
-          "recruitment.manage_offers",
-          "recruitment.manage_onboarding",
-        ],
-        Tasks: [
-          "tasks.view_all",
-          "tasks.view_dept",
-          "tasks.view_own",
-          "tasks.create",
-          "tasks.assign_any",
-          "tasks.assign_dept",
-          "tasks.manage_projects",
-        ],
-        System: [
-          "users.manage",
-          "roles.assign",
-          "permissions.override",
-          "system.audit_logs",
-        ],
-      };
-
-      const permsToInsert = [];
-      for (const module in ALL_PERMISSIONS) {
-        for (const perm of ALL_PERMISSIONS[module]) {
-          permsToInsert.push({
-            role_id: superAdmin.id,
-            module,
-            permission: perm,
-          });
-        }
-      }
-
-      await RolePermission.bulkCreate(permsToInsert, { transaction: t });
-    }
-
-    // Give HRIS access
     const hrisUser = await HrisUser.create(
       {
         employee_id: employee.id,
-        role_id: superAdmin.id,
+
+        role_id: superAdminRole.id,
+
         is_active: true,
+
         granted_at: new Date(),
       },
-      { transaction: t },
+      { transaction },
     );
 
-    // Create company profile
-    const newCompany = await CompanyProfile.create(
+    // ────────────────────────────────
+    // CREATE COMPANY PROFILE
+    // ────────────────────────────────
+
+    const companyProfile = await CompanyProfile.create(
       {
         company_name: company.companyName,
+
         industry: company.industry,
+
         company_size: company.size,
       },
-      { transaction: t },
+      { transaction },
     );
 
-    await t.commit();
+    // ────────────────────────────────
+    // COMMIT
+    // ────────────────────────────────
 
-    res.json({
+    await transaction.commit();
+
+    return res.status(201).json({
       success: true,
       message: "Initial setup completed successfully",
-      data: { employee, hrisUser, company: newCompany },
+
+      data: {
+        employee,
+        hrisUser,
+        role: superAdminRole,
+        company: companyProfile,
+      },
     });
   } catch (err) {
-    await t.rollback();
+    if (transaction) {
+      await transaction.rollback();
+    }
+
     console.error("Setup error:", err);
-    next(err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Initial setup failed",
+      error: err.message,
+    });
   }
 };
