@@ -3,7 +3,6 @@
 const { DataTypes } = require("sequelize");
 const { sequelize } = require("../../../../config/database");
 
-// ✅ Helper function (reusable + safe)
 const getInitials = (first, last) => {
   return `${first?.[0] || ""}${last?.[0] || ""}`.toUpperCase();
 };
@@ -47,7 +46,6 @@ const Employee = sequelize.define(
 
     phone: DataTypes.STRING(30),
 
-    // ✅ Will be auto-generated (no need from frontend)
     avatar_initials: {
       type: DataTypes.STRING(4),
       allowNull: true,
@@ -56,15 +54,19 @@ const Employee = sequelize.define(
     department_id: {
       type: DataTypes.UUID,
       allowNull: true,
-      references: {
-        model: "departments",
-        key: "id",
-      },
+      references: { model: "departments", key: "id" },
+    },
+
+    // ── role_id FK — was missing from model, exists in DB ──
+    role_id: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      references: { model: "roles", key: "id" },
     },
 
     role_title: {
       type: DataTypes.STRING(150),
-      allowNull: false,
+      allowNull: true, // relaxed — we derive it from the join now
     },
 
     employment_type: {
@@ -107,10 +109,7 @@ const Employee = sequelize.define(
     manager_id: {
       type: DataTypes.UUID,
       allowNull: true,
-      references: {
-        model: "employees",
-        key: "id",
-      },
+      references: { model: "employees", key: "id" },
     },
   },
   {
@@ -121,7 +120,6 @@ const Employee = sequelize.define(
     paranoid: true,
     deletedAt: "deleted_at",
 
-    // ✅ Centralized backend logic
     hooks: {
       beforeSave: (employee) => {
         employee.avatar_initials = getInitials(

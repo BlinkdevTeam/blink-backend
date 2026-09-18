@@ -114,9 +114,17 @@ PasswordResetToken.belongsTo(Employee, { foreignKey: "employee_id" });
 Employee.hasMany(LoginAttempt, { foreignKey: "employee_id" });
 LoginAttempt.belongsTo(Employee, { foreignKey: "employee_id" });
 
+Employee.belongsTo(Role, {
+  foreignKey: "role_id",
+});
+
+Role.hasMany(Employee, {
+  foreignKey: "role_id",
+});
+
 // ROLE
-// Role.hasMany(RolePermission, { foreignKey: "role_id" });
-// RolePermission.belongsTo(Role, { foreignKey: "role_id" });
+Role.hasMany(RolePermission, { foreignKey: "role_id" });
+RolePermission.belongsTo(Role, { foreignKey: "role_id" });
 
 HrisUser.belongsTo(Role, { foreignKey: "role_id" });
 Role.hasMany(HrisUser, { foreignKey: "role_id" });

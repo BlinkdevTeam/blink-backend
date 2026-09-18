@@ -35,34 +35,30 @@ app.use("/api/auth", authRoutes);
 
 // ── PERMISSION ROUTES ──────────────────────────────────────
 const permissionRoutes = require("./modules/auth/routes/permissionRoutes");
-
 app.use("/api/permissions", permissionRoutes);
 
 // ── ROLE ROUTES ────────────────────────────────────────────
 const roleRoutes = require("./modules/auth/routes/roleRoutes");
-
 app.use("/api/roles", roleRoutes);
+
+// ── USER ROUTES ────────────────────────────────────────────
+const usersRoutes = require("./modules/auth/routes/userRoutes");
+app.use("/api/users", usersRoutes);
 
 // ── EMPLOYEE ROUTES ────────────────────────────────────────
 const employeeRoutes = require("./modules/hris/routes/employeeRoutes");
-
-// IMPORTANT FIX:
-// frontend calls /api/employees/*
 app.use("/api/employees", employeeRoutes);
 
 // ── DEPARTMENT ROUTES ──────────────────────────────────────
 const departmentRoutes = require("./modules/hris/routes/departmentRoutes");
-
 app.use("/api/departments", departmentRoutes);
 
 // ── STATS ROUTES ───────────────────────────────────────────
 const statsRoutes = require("./modules/hris/routes/stats");
-
 app.use("/api", statsRoutes);
 
 // ── HEALTH ROUTES ──────────────────────────────────────────
 const healthRoutes = require("./modules/auth/routes/health");
-
 app.use("/api", healthRoutes);
 
 // ── ROOT CHECK ─────────────────────────────────────────────
@@ -99,12 +95,10 @@ const start = async () => {
 
     app.listen(config.port, () => {
       console.log(`🚀 Server running on port ${config.port} [${config.env}]`);
-
       console.log(`🌐 API: http://localhost:${config.port}`);
     });
   } catch (err) {
     console.error("❌ Failed to start server:", err);
-
     process.exit(1);
   }
 };

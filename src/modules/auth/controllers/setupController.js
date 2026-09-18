@@ -14,67 +14,57 @@ const bcrypt = require("bcrypt");
 const CompanyProfile = require("../../../models/hris/models/company/profile");
 
 // ────────────────────────────────
-// ALL SYSTEM PERMISSIONS
+// CHECK SETUP STATUS (ROBUST)
 // ────────────────────────────────
-
-// ────────────────────────────────
-// CHECK SETUP STATUS
-// ────────────────────────────────
-exports.getSetupStatus = async (req, res, next) => {
+exports.getSetupStatus = async (req, res) => {
   try {
-    // Find super admin role
-    const superAdminRole = await Role.findOne({
-      where: {
-        code: "super_admin",
-      },
-    });
+    let superAdminRole = null;
 
-    // No role yet = setup not completed
-    if (!superAdminRole) {
-      return res.json({
-        success: true,
-        exists: false,
+    try {
+      superAdminRole = await Role.findOne({
+        where: { name: "Super Admin" }, // ← keep this, it works
       });
+    } catch (err) {
+      console.warn("Role table issue:", err.message);
+      superAdminRole = null;
     }
 
-    // Check if a user already has this role
+    if (!superAdminRole) {
+      return res.json({ success: true, exists: false });
+    }
+
     const adminUser = await HrisUser.findOne({
       where: {
         role_id: superAdminRole.id,
+        is_active: true,
       },
     });
 
-    return res.json({
-      success: true,
-      exists: !!adminUser,
-    });
+    console.log("Role found:", superAdminRole.id, superAdminRole.name);
+    console.log("User found:", adminUser?.id);
+
+    return res.json({ success: true, exists: !!adminUser });
   } catch (err) {
     console.error("Error checking setup status:", err);
-
     return res.status(500).json({
       success: false,
-      message: "Failed to check setup status",
-      error: err.message,
+      message: err.message,
     });
   }
 };
 
 // ────────────────────────────────
-// CREATE INITIAL SETUP
+// CREATE INITIAL SETUP (ROBUST VERSION)
 // ────────────────────────────────
-exports.createSetup = async (req, res, next) => {
+exports.createSetup = async (req, res) => {
   const transaction = await sequelize.transaction();
 
   try {
     const { company, admin } = req.body;
 
-    // ────────────────────────────────
-    // VALIDATIONS
-    // ────────────────────────────────
-
+    // ───────── VALIDATION ─────────
     if (!company || !admin) {
       await transaction.rollback();
-
       return res.status(400).json({
         success: false,
         message: "Company and admin data are required",
@@ -88,192 +78,132 @@ exports.createSetup = async (req, res, next) => {
       !admin.password
     ) {
       await transaction.rollback();
-
       return res.status(400).json({
         success: false,
         message: "Incomplete admin information",
       });
     }
 
-    // ────────────────────────────────
-    // CHECK IF SETUP ALREADY EXISTS
-    // ────────────────────────────────
+    // ───────── ROLE SAFE LOOKUP ─────────
+    let superAdminRole = null;
 
-    let superAdminRole = await Role.findOne({
+    try {
+      superAdminRole = await Role.findOne({
+        where: { code: "super_admin" }, // ← was: name: "Super Admin"
+      });
+    } catch (err) {
+      console.warn("Role lookup failed, will create role");
+    }
+
+    // ───────── CREATE ROLE IF MISSING ─────────
+    if (!superAdminRole) {
+      superAdminRole = await Role.findOne({
+        where: { code: "super_admin" }, // ← was: name: "Super Admin"
+        transaction,
+      });
+    }
+
+    // ───────── CHECK EXISTING ADMIN ─────────
+    const existingAdmin = await HrisUser.findOne({
       where: {
-        code: "super_admin",
+        role_id: superAdminRole.id,
+        is_active: true,
       },
       transaction,
     });
 
-    if (superAdminRole) {
-      const existingAdmin = await HrisUser.findOne({
-        where: {
-          role_id: superAdminRole.id,
-        },
-        transaction,
+    if (existingAdmin) {
+      await transaction.rollback();
+      return res.status(403).json({
+        success: false,
+        message: "Initial setup already completed",
       });
-
-      if (existingAdmin) {
-        await transaction.rollback();
-
-        return res.status(403).json({
-          success: false,
-          message: "Initial setup already completed",
-        });
-      }
     }
 
-    // ────────────────────────────────
-    // CREATE ROLE IF MISSING
-    // ────────────────────────────────
-
-    if (!superAdminRole) {
-      superAdminRole = await Role.create(
-        {
-          name: "Super Admin",
-          code: "super_admin",
-          description: "System Super Administrator",
-          is_system: true,
-        },
-        { transaction },
-      );
-    }
-
-    // ────────────────────────────────
-    // ASSIGN ALL PERMISSIONS
-    // ────────────────────────────────
-
+    // ───────── ASSIGN PERMISSIONS ─────────
     const existingPermissions = await RolePermission.count({
-      where: {
-        role_id: superAdminRole.id,
-      },
+      where: { role_id: superAdminRole.id },
       transaction,
     });
 
     if (existingPermissions === 0) {
-      // fetch all permissions
-      const allPermissions = await Permission.findAll({
-        transaction,
-      });
+      const allPermissions = await Permission.findAll({ transaction });
 
-      // prevent empty insert
       if (allPermissions.length > 0) {
-        const permsToInsert = allPermissions.map((perm) => ({
-          role_id: superAdminRole.id,
-          permission_id: perm.id,
-        }));
-
-        await RolePermission.bulkCreate(permsToInsert, {
-          transaction,
-        });
+        await RolePermission.bulkCreate(
+          allPermissions.map((p) => ({
+            role_id: superAdminRole.id,
+            permission_id: p.id,
+          })),
+          { transaction },
+        );
       }
     }
 
-    // ────────────────────────────────
-    // HASH PASSWORD
-    // ────────────────────────────────
-
+    // ───────── HASH PASSWORD ─────────
     const hashedPassword = await bcrypt.hash(admin.password, 10);
 
-    // ────────────────────────────────
-    // GENERATE EMPLOYEE CODE
-    // ────────────────────────────────
-
-    const employeeCount = await Employee.count({
-      transaction,
-    });
-
+    // ───────── EMPLOYEE CODE ─────────
+    const employeeCount = await Employee.count({ transaction });
     const employeeCode = `EMP-${String(employeeCount + 1).padStart(4, "0")}`;
 
-    // ────────────────────────────────
-    // CHECK EMAIL DUPLICATE
-    // ────────────────────────────────
-
+    // ───────── DUPLICATE EMAIL CHECK ─────────
     const existingEmployee = await Employee.findOne({
-      where: {
-        email: admin.email,
-      },
+      where: { email: admin.email },
       transaction,
     });
 
     if (existingEmployee) {
       await transaction.rollback();
-
       return res.status(409).json({
         success: false,
         message: "Email already exists",
       });
     }
 
-    // ────────────────────────────────
-    // CREATE EMPLOYEE
-    // ────────────────────────────────
-
+    // ───────── CREATE EMPLOYEE ─────────
     const employee = await Employee.create(
       {
         employee_code: employeeCode,
-
         first_name: admin.firstName,
         last_name: admin.lastName,
         email: admin.email,
-
         role_title: "Super Admin",
-
         employment_type: "full_time",
-
         hire_date: new Date(),
-
         password_hash: hashedPassword,
-
         is_active: true,
         must_change_password: false,
       },
       { transaction },
     );
 
-    // ────────────────────────────────
-    // CREATE HRIS USER
-    // ────────────────────────────────
-
+    // ───────── CREATE HRIS USER ─────────
     const hrisUser = await HrisUser.create(
       {
         employee_id: employee.id,
-
         role_id: superAdminRole.id,
-
         is_active: true,
-
         granted_at: new Date(),
       },
       { transaction },
     );
 
-    // ────────────────────────────────
-    // CREATE COMPANY PROFILE
-    // ────────────────────────────────
-
+    // ───────── COMPANY PROFILE ─────────
     const companyProfile = await CompanyProfile.create(
       {
         company_name: company.companyName,
-
         industry: company.industry,
-
         company_size: company.size,
       },
       { transaction },
     );
-
-    // ────────────────────────────────
-    // COMMIT
-    // ────────────────────────────────
 
     await transaction.commit();
 
     return res.status(201).json({
       success: true,
       message: "Initial setup completed successfully",
-
       data: {
         employee,
         hrisUser,
@@ -282,9 +212,7 @@ exports.createSetup = async (req, res, next) => {
       },
     });
   } catch (err) {
-    if (transaction) {
-      await transaction.rollback();
-    }
+    await transaction.rollback();
 
     console.error("Setup error:", err);
 

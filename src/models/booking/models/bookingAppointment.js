@@ -67,6 +67,11 @@ const BookingAppointment = sequelize.define(
       type: DataTypes.STRING,
       defaultValue: "Pending",
     },
+    terms_accepted: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
   },
   {
     timestamps: true,

@@ -12,31 +12,38 @@ const Role = sequelize.define(
       primaryKey: true,
     },
 
+    name: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      unique: true,
+    },
+
+    // ── Added: was missing, caused 500 on create/lookup ──
     code: {
       type: DataTypes.STRING(100),
       allowNull: false,
       unique: true,
     },
 
-    name: {
-      type: DataTypes.STRING(100),
-      allowNull: false,
-      unique: true,
-    },
-
     description: {
-      type: DataTypes.TEXT,
+      type: DataTypes.STRING,
+      allowNull: true,
     },
 
     is_system: {
       type: DataTypes.BOOLEAN,
       defaultValue: false,
     },
+
+    created_by: {
+      type: DataTypes.UUID,
+      allowNull: true,
+    },
   },
   {
     tableName: "roles",
-    underscored: true,
     timestamps: true,
+    underscored: true,
   },
 );
 

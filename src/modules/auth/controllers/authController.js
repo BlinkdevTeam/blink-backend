@@ -22,7 +22,7 @@ const REFRESH_SECRET = process.env.REFRESH_SECRET || "refresh-secret";
 
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_MINUTES = 15;
-const TOKEN_EXPIRY = 60 * 60 * 1000;
+const TOKEN_EXPIRY = 60 * 60 * 1000; // 1 hour for forgot-password
 
 /* ---------------- LOGIN ---------------- */
 
@@ -121,7 +121,6 @@ exports.login = async (req, res) => {
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
-    /* ---------------- ROLE FIX (IMPORTANT) ---------------- */
     const roleTitle =
       employee.role_title ||
       hrisUser?.role_title ||
@@ -186,7 +185,6 @@ exports.refresh = async (req, res) => {
       { expiresIn: "15m" },
     );
 
-    /* ---------------- ROLE FIX ---------------- */
     const roleTitle =
       employee.role_title ||
       hrisUser?.role_title ||
@@ -269,7 +267,6 @@ exports.forgotPassword = async (req, res) => {
 
     const token = crypto.randomBytes(32).toString("hex");
     const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
-
     const expiresAt = new Date(Date.now() + TOKEN_EXPIRY);
 
     await PasswordResetToken.create({
@@ -279,7 +276,7 @@ exports.forgotPassword = async (req, res) => {
       expires_at: expiresAt,
     });
 
-    const resetUrl = `${process.env.FRONTEND_URL}/set-password-reset?token=${token}`;
+    const resetUrl = `${process.env.APP_BASE_URL}/login?token=${token}`;
 
     await sendPasswordResetEmail(email, employee.first_name, resetUrl);
 
@@ -290,44 +287,11 @@ exports.forgotPassword = async (req, res) => {
   }
 };
 
-/* ---------------- RESET PASSWORD ---------------- */
-
-exports.resetPassword = async (req, res) => {
-  try {
-    const { token, password } = req.body;
-
-    if (!token || !password) {
-      return res.status(400).json({ message: "Invalid request" });
-    }
-
-    const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
-
-    const record = await PasswordResetToken.findOne({
-      where: { token_hash: hashedToken },
-    });
-
-    if (!record || record.used_at || new Date() > record.expires_at) {
-      return res.status(400).json({ message: "Invalid or expired token" });
-    }
-
-    const password_hash = await bcrypt.hash(password, 10);
-
-    await Employee.update(
-      { password_hash },
-      { where: { id: record.employee_id } },
-    );
-
-    record.used_at = new Date();
-    await record.save();
-
-    res.json({ message: "Password updated successfully" });
-  } catch (err) {
-    console.error("Reset Password error:", err);
-    res.status(500).json({ message: "Server error" });
-  }
-};
-
 /* ---------------- VERIFY RESET TOKEN ---------------- */
+//
+// Handles BOTH flows:
+//   1. forgot-password → token lives in PasswordResetToken (hashed)
+//   2. invite / resend → token lives in HrisUser.invite_token (raw)
 
 exports.verifyResetToken = async (req, res) => {
   try {
@@ -339,22 +303,147 @@ exports.verifyResetToken = async (req, res) => {
         .json({ valid: false, message: "No token provided" });
     }
 
-    const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+    // ── Check PasswordResetToken table (forgot-password + invite flow) ──
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
 
     const record = await PasswordResetToken.findOne({
-      where: { token_hash: hashedToken },
+      where: { token_hash: tokenHash, used_at: null },
     });
 
-    if (!record || record.used_at || new Date() > record.expires_at) {
-      return res
-        .status(400)
-        .json({ valid: false, message: "Token invalid or expired" });
+    if (record && new Date() <= record.expires_at) {
+      return res.json({ valid: true, flow: record.type });
     }
 
-    return res.json({ valid: true });
+    // ── Fallback: check HrisUser.invite_token (raw) for old tokens ──
+    const hrisUser = await HrisUser.findOne({
+      where: { invite_token: token },
+    });
+
+    if (hrisUser) {
+      return res.json({ valid: true, flow: "invite" });
+    }
+
+    return res.status(400).json({
+      valid: false,
+      message: "Token invalid or expired",
+    });
   } catch (err) {
     console.error("Verify token error:", err);
     return res.status(500).json({ valid: false, message: "Server error" });
+  }
+};
+
+/* ---------------- RESET PASSWORD ---------------- */
+//
+// Handles BOTH flows:
+//   1. forgot-password → validates via PasswordResetToken, updates password only
+//   2. invite / resend → validates via HrisUser.invite_token, sets password
+//                        AND activates the account on BOTH tables
+
+exports.resetPassword = async (req, res) => {
+  try {
+    const { token, password } = req.body;
+
+    if (!token || !password) {
+      return res.status(400).json({ message: "Invalid request" });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // ── Try PasswordResetToken first (forgot-password flow) ──
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+
+    const record = await PasswordResetToken.findOne({
+      where: { token_hash: tokenHash },
+    });
+
+    if (record) {
+      if (record.used_at || new Date() > record.expires_at) {
+        return res.status(400).json({ message: "Invalid or expired token" });
+      }
+
+      if (record.type === "invite") {
+        // ── Invite flow via PasswordResetToken ──
+        // Find the hrisUser to get employee_id and clear invite_token
+        const hrisUser = await HrisUser.findOne({
+          where: { employee_id: record.employee_id },
+        });
+
+        if (hrisUser) {
+          await hrisUser.update({
+            password_hash: hashedPassword,
+            invite_token: null,
+            must_change_password: false,
+            is_active: true,
+          });
+        }
+
+        // ✅ Fully activate the employee row
+        await Employee.update(
+          {
+            password_hash: hashedPassword,
+            must_change_password: false,
+            is_active: true,
+            status: "active", // ← this was the missing piece
+          },
+          { where: { id: record.employee_id } },
+        );
+
+        record.used_at = new Date();
+        await record.save();
+
+        return res.json({
+          message: "Password set successfully. You can now log in.",
+        });
+      }
+
+      // ── Standard forgot-password flow ──
+      await Employee.update(
+        { password_hash: hashedPassword },
+        { where: { id: record.employee_id } },
+      );
+
+      record.used_at = new Date();
+      await record.save();
+
+      return res.json({ message: "Password updated successfully" });
+    }
+
+    // ── Fallback: HrisUser.invite_token (raw) for old tokens ──
+    const hrisUser = await HrisUser.findOne({
+      where: { invite_token: token },
+    });
+
+    if (!hrisUser) {
+      return res
+        .status(400)
+        .json({ message: "Reset link is invalid or has already been used" });
+    }
+
+    await hrisUser.update({
+      password_hash: hashedPassword,
+      invite_token: null,
+      must_change_password: false,
+      is_active: true,
+    });
+
+    // ✅ Fully activate the employee row
+    await Employee.update(
+      {
+        password_hash: hashedPassword,
+        must_change_password: false,
+        is_active: true,
+        status: "active", // ← this was the missing piece
+      },
+      { where: { id: hrisUser.employee_id } },
+    );
+
+    return res.json({
+      message: "Password set successfully. You can now log in.",
+    });
+  } catch (err) {
+    console.error("Reset Password error:", err);
+    res.status(500).json({ message: "Server error" });
   }
 };
 

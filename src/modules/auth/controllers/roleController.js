@@ -36,26 +36,38 @@ exports.getRoles = async (_req, res) => {
       include: [
         {
           model: RolePermission,
-          attributes: ["module", "permission"],
+          attributes: ["permission_id"],
         },
       ],
+
       order: [["created_at", "ASC"]],
     });
 
     const formatted = roles.map((role) => ({
       id: role.id,
+
       name: role.name,
+
       code: role.code,
+
       is_system: role.is_system,
-      permissions: role.RolePermissions.map((p) => p.permission),
+
+      permissions: role.RolePermissions?.map((p) => p.permission_id) || [],
     }));
 
     res.json(formatted);
   } catch (err) {
-    console.error("Error fetching roles:", err);
+    console.error("FULL ROLE ERROR:", err);
+
+    console.error("MESSAGE:", err.message);
+
+    if (err.parent) {
+      console.error("SQL ERROR:", err.parent.sqlMessage);
+    }
 
     res.status(500).json({
       message: "Failed to fetch roles",
+
       error: err.message,
     });
   }
@@ -70,7 +82,8 @@ exports.getRoleById = async (req, res) => {
       include: [
         {
           model: RolePermission,
-          attributes: ["module", "permission"],
+
+          attributes: ["permission_id"],
         },
       ],
     });
@@ -83,16 +96,27 @@ exports.getRoleById = async (req, res) => {
 
     res.json({
       id: role.id,
+
       name: role.name,
+
       code: role.code,
+
       is_system: role.is_system,
-      permissions: role.RolePermissions.map((p) => p.permission),
+
+      permissions: role.RolePermissions?.map((p) => p.permission_id) || [],
     });
   } catch (err) {
-    console.error("Error fetching role:", err);
+    console.error("FULL ROLE ERROR:", err);
+
+    console.error("MESSAGE:", err.message);
+
+    if (err.parent) {
+      console.error("SQL ERROR:", err.parent.sqlMessage);
+    }
 
     res.status(500).json({
       message: "Failed to fetch role",
+
       error: err.message,
     });
   }
@@ -133,6 +157,7 @@ exports.deleteRole = async (req, res) => {
 
     res.status(500).json({
       message: "Failed to delete role",
+
       error: err.message,
     });
   }

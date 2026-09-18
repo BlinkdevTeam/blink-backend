@@ -2,14 +2,15 @@
 
 /**
  * Generates the HTML body for the user invitation email.
+ * No temporary password is included — the user sets their own
+ * password by clicking the link.
  *
  * @param {Object} options
- * @param {string} options.toName            - Recipient's full name
- * @param {string} options.temporaryPassword - One-time temporary password
- * @param {string} options.inviteLink        - Invite/accept URL
+ * @param {string} options.toName    - Recipient's full name
+ * @param {string} options.inviteLink - Set-password URL
  * @returns {string}
  */
-const generateInviteEmailHtml = ({ toName, temporaryPassword, inviteLink }) => {
+const generateInviteEmailHtml = ({ toName, inviteLink }) => {
   return `
 <!DOCTYPE html>
 <html lang="en">
@@ -38,32 +39,10 @@ const generateInviteEmailHtml = ({ toName, temporaryPassword, inviteLink }) => {
               <p style="margin:0 0 24px;font-size:16px;color:#475569;line-height:1.7;">
                 Hi <strong style="color:#1e293b;">${toName}</strong>,
               </p>
-              <p style="margin:0 0 24px;font-size:15px;color:#475569;line-height:1.7;">
-                Your HR team has created an account for you on the BCS Workspace Task Management App.
-                Use the credentials below to sign in and get started.
+              <p style="margin:0 0 32px;font-size:15px;color:#475569;line-height:1.7;">
+                Your HR team has created an account for you on the BCS Workspace.
+                Click the button below to set your password and get started.
               </p>
-
-              <!-- Credentials Box -->
-              <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:32px;">
-                <tr>
-                  <td style="padding:24px 28px;">
-                    <p style="margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:2px;color:#94a3b8;font-weight:700;">Your Login Details</p>
-                    <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:16px;">
-                      <tr>
-                        <td style="padding:8px 0;border-bottom:1px solid #e2e8f0;">
-                          <span style="font-size:13px;color:#94a3b8;font-weight:500;">Temporary Password</span>
-                        </td>
-                        <td align="right" style="padding:8px 0;border-bottom:1px solid #e2e8f0;">
-                          <code style="font-size:14px;font-family:'Courier New',monospace;color:#1e293b;font-weight:700;background:#e2e8f0;padding:3px 10px;border-radius:4px;">${temporaryPassword}</code>
-                        </td>
-                      </tr>
-                    </table>
-                    <p style="margin:14px 0 0;font-size:12px;color:#94a3b8;">
-                      ⚠️ This is a temporary password. You will be asked to change it on first login.
-                    </p>
-                  </td>
-                </tr>
-              </table>
 
               <!-- CTA Button -->
               <table width="100%" cellpadding="0" cellspacing="0">
@@ -71,7 +50,7 @@ const generateInviteEmailHtml = ({ toName, temporaryPassword, inviteLink }) => {
                   <td align="center">
                     <a href="${inviteLink}" target="_blank"
                       style="display:inline-block;padding:16px 40px;background:linear-gradient(135deg,#3b82f6,#2563eb);color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;border-radius:8px;letter-spacing:0.3px;">
-                      Accept Invitation →
+                      Set My Password →
                     </a>
                   </td>
                 </tr>
@@ -80,6 +59,10 @@ const generateInviteEmailHtml = ({ toName, temporaryPassword, inviteLink }) => {
               <p style="margin:28px 0 0;font-size:13px;color:#94a3b8;text-align:center;line-height:1.6;">
                 Or copy and paste this link into your browser:<br/>
                 <a href="${inviteLink}" style="color:#3b82f6;word-break:break-all;">${inviteLink}</a>
+              </p>
+
+              <p style="margin:24px 0 0;font-size:12px;color:#94a3b8;text-align:center;">
+                This link will expire once used. If you didn't expect this email, you can safely ignore it.
               </p>
             </td>
           </tr>

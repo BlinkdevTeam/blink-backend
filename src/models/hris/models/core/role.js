@@ -3,6 +3,7 @@
 const { DataTypes } = require("sequelize");
 const { sequelize } = require("../../../../config/database");
 
+// models/role.js
 const Role = sequelize.define(
   "Role",
   {
@@ -18,6 +19,13 @@ const Role = sequelize.define(
       unique: true,
     },
 
+    code: {
+      // ← ADD THIS
+      type: DataTypes.STRING,
+      allowNull: true,
+      unique: true,
+    },
+
     description: {
       type: DataTypes.STRING,
       allowNull: true,
@@ -25,7 +33,7 @@ const Role = sequelize.define(
 
     is_system: {
       type: DataTypes.BOOLEAN,
-      defaultValue: false, // for default roles like super_admin
+      defaultValue: false,
     },
 
     created_by: {
@@ -39,5 +47,3 @@ const Role = sequelize.define(
     underscored: true,
   },
 );
-
-module.exports = Role;
