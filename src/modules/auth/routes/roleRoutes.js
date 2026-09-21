@@ -3,6 +3,8 @@
 const express = require("express");
 const router = express.Router();
 
+const requireSuperAdmin = require("../../../middleware/auth/middleware/roleMiddleware");
+
 const {
   createRole,
   getRoles,
@@ -10,11 +12,14 @@ const {
   deleteRole,
 } = require("../controllers/roleController");
 
+// Note: /api/roles is already mounted behind `protect` in server.js,
+// so every route below already requires a valid access token.
+
 // ─────────────────────────────────────────
-// CREATE ROLE
+// CREATE ROLE — Super Admin only
 // POST /api/roles
 // ─────────────────────────────────────────
-router.post("/", createRole);
+router.post("/", requireSuperAdmin, createRole);
 
 // ─────────────────────────────────────────
 // GET ALL ROLES
@@ -29,9 +34,9 @@ router.get("/", getRoles);
 router.get("/:id", getRoleById);
 
 // ─────────────────────────────────────────
-// DELETE ROLE
+// DELETE ROLE — Super Admin only
 // DELETE /api/roles/:id
 // ─────────────────────────────────────────
-router.delete("/:id", deleteRole);
+router.delete("/:id", requireSuperAdmin, deleteRole);
 
 module.exports = router;

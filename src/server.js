@@ -8,12 +8,47 @@ require("./models");
 
 // ── IMPORT DEPENDENCIES ────────────────────────────────────
 const express = require("express");
+const helmet = require("helmet");
 const cookieParser = require("cookie-parser");
+const rateLimit = require("express-rate-limit");
 
 const app = express();
 
 const config = require("./config");
 const { connectDB } = require("./config/database");
+
+// ── AUTH MIDDLEWARE ────────────────────────────────────────
+const { protect } = require("./middleware/auth/middleware/authMiddleware");
+
+// ── SECURITY MIDDLEWARE ────────────────────────────────────
+app.use(helmet());
+
+// Trust proxy if running behind a reverse proxy (needed for rate-limit + secure cookies in prod)
+if (config.env === "production") {
+  app.set("trust proxy", 1);
+}
+
+// General API rate limit — generous, just stops abuse/scraping
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 min
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Tighter limit for auth endpoints — brute-force protection
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: "Too many attempts. Please try again later.",
+  },
+});
+
+app.use("/api", apiLimiter);
 
 // ── MIDDLEWARE ─────────────────────────────────────────────
 const corsMiddleware = require("./config/cors");
@@ -25,39 +60,39 @@ app.use(cookieParser());
 
 // ── ROUTES ─────────────────────────────────────────────────
 
-// ── SETUP ROUTES ───────────────────────────────────────────
+// ── SETUP ROUTES (public — only usable before first admin exists) ──
 const setupRoutes = require("./modules/auth/routes/setupRoutes");
 app.use("/api/setup", setupRoutes);
 
-// ── AUTH ROUTES ────────────────────────────────────────────
+// ── AUTH ROUTES (public, but rate-limited) ──────────────────
 const authRoutes = require("./modules/auth/routes/authRoutes");
-app.use("/api/auth", authRoutes);
+app.use("/api/auth", authLimiter, authRoutes);
 
-// ── PERMISSION ROUTES ──────────────────────────────────────
+// ── PERMISSION ROUTES (protected) ───────────────────────────
 const permissionRoutes = require("./modules/auth/routes/permissionRoutes");
-app.use("/api/permissions", permissionRoutes);
+app.use("/api/permissions", protect, permissionRoutes);
 
-// ── ROLE ROUTES ────────────────────────────────────────────
+// ── ROLE ROUTES (protected) ─────────────────────────────────
 const roleRoutes = require("./modules/auth/routes/roleRoutes");
-app.use("/api/roles", roleRoutes);
+app.use("/api/roles", protect, roleRoutes);
 
-// ── USER ROUTES ────────────────────────────────────────────
+// ── USER ROUTES (protected) ─────────────────────────────────
 const usersRoutes = require("./modules/auth/routes/userRoutes");
-app.use("/api/users", usersRoutes);
+app.use("/api/users", protect, usersRoutes);
 
-// ── EMPLOYEE ROUTES ────────────────────────────────────────
+// ── EMPLOYEE ROUTES (protected) ─────────────────────────────
 const employeeRoutes = require("./modules/hris/routes/employeeRoutes");
-app.use("/api/employees", employeeRoutes);
+app.use("/api/employees", protect, employeeRoutes);
 
-// ── DEPARTMENT ROUTES ──────────────────────────────────────
+// ── DEPARTMENT ROUTES (protected) ───────────────────────────
 const departmentRoutes = require("./modules/hris/routes/departmentRoutes");
-app.use("/api/departments", departmentRoutes);
+app.use("/api/departments", protect, departmentRoutes);
 
-// ── STATS ROUTES ───────────────────────────────────────────
+// ── STATS ROUTES (protected) ────────────────────────────────
 const statsRoutes = require("./modules/hris/routes/stats");
-app.use("/api", statsRoutes);
+app.use("/api", protect, statsRoutes);
 
-// ── HEALTH ROUTES ──────────────────────────────────────────
+// ── HEALTH ROUTES (public — needed for uptime checks) ───────
 const healthRoutes = require("./modules/auth/routes/health");
 app.use("/api", healthRoutes);
 
@@ -84,7 +119,10 @@ app.use((err, _req, res, _next) => {
 
   res.status(err.status || 500).json({
     success: false,
-    message: err.message || "Internal Server Error",
+    message:
+      config.env === "production"
+        ? "Internal Server Error"
+        : err.message || "Internal Server Error",
   });
 });
 

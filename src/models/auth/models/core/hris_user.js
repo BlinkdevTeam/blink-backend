@@ -3,6 +3,11 @@
 const { DataTypes } = require("sequelize");
 const { sequelize } = require("../../../../config/database");
 
+// NOTE — invite tokens are intentionally NOT stored on this model.
+// Only a SHA-256 hash of the invite/reset token is persisted, in
+// PasswordResetToken.token_hash (type = "invite"). Do not add a
+// raw `invite_token` column here — see usersController.js
+// createInviteToken() / invite() / resendInvite().
 const HrisUser = sequelize.define(
   "HrisUser",
   {
@@ -22,7 +27,6 @@ const HrisUser = sequelize.define(
       },
     },
 
-    // ✅ FIX: THIS MUST EXIST in DB
     role_id: {
       type: DataTypes.UUID,
       allowNull: false,

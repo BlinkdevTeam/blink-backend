@@ -23,7 +23,7 @@ const CompanyProfile = sequelize.define(
     },
 
     company_size: {
-      type: DataTypes.STRING, // could also be ENUM or INTEGER depending on your needs
+      type: DataTypes.STRING,
       allowNull: false,
     },
   },

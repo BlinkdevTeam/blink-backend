@@ -14,12 +14,26 @@ const {
   sendInviteEmail,
 } = require("../../../utils/auth/utils/sendInviteEmail");
 
+// Fields that must never leave this controller in a response.
+// (Covers both the current schema and legacy columns some records may still have.)
+const SENSITIVE_ATTRS = ["password_hash", "invite_token"];
+
+function safeAttributes(model) {
+  return { exclude: SENSITIVE_ATTRS };
+}
+
+function hashToken(rawToken) {
+  return crypto.createHash("sha256").update(rawToken).digest("hex");
+}
+
 // ────────────────────────────────
 // GET ALL USERS
 // ────────────────────────────────
 exports.getAll = async (_req, res, next) => {
   try {
-    const users = await HrisUser.findAll();
+    const users = await HrisUser.findAll({
+      attributes: safeAttributes(HrisUser),
+    });
     res.json({ success: true, count: users.length, data: users });
   } catch (err) {
     next(err);
@@ -31,7 +45,9 @@ exports.getAll = async (_req, res, next) => {
 // ────────────────────────────────
 exports.getById = async (req, res, next) => {
   try {
-    const user = await HrisUser.findByPk(req.params.id);
+    const user = await HrisUser.findByPk(req.params.id, {
+      attributes: safeAttributes(HrisUser),
+    });
     if (!user) {
       return res
         .status(404)
@@ -48,17 +64,29 @@ exports.getById = async (req, res, next) => {
 // ────────────────────────────────
 exports.create = async (req, res, next) => {
   try {
-    const { employee_id, email, password_hash, role } = req.body;
+    // Whitelist — never trust the client for role/active/timestamps.
+    const { employee_id, role_id } = req.body;
+
+    if (!employee_id) {
+      return res.status(400).json({
+        success: false,
+        message: "employee_id is required",
+      });
+    }
+
     const user = await HrisUser.create({
       employee_id,
-      email,
-      password_hash,
-      role,
+      role_id: role_id ?? null,
+      is_active: true,
+      granted_at: new Date(),
     });
+
+    const { password_hash, invite_token, ...safeUser } = user.toJSON();
+
     res.status(201).json({
       success: true,
       message: "User created successfully",
-      data: user,
+      data: safeUser,
     });
   } catch (err) {
     next(err);
@@ -72,6 +100,7 @@ exports.checkSuperAdmin = async (req, res, next) => {
   try {
     const user = await HrisUser.findOne({
       where: { employee_id: req.params.id },
+      attributes: safeAttributes(HrisUser),
       include: [
         {
           model: Role,
@@ -87,7 +116,7 @@ exports.checkSuperAdmin = async (req, res, next) => {
         .json({ success: false, message: "User not found" });
     }
 
-    const roleCode = user.Role?.code ?? user.role ?? "";
+    const roleCode = user.Role?.code ?? "";
 
     if (roleCode !== "super_admin") {
       return res
@@ -100,7 +129,6 @@ exports.checkSuperAdmin = async (req, res, next) => {
       message: "User is super admin",
       data: {
         id: user.id,
-        email: user.email,
         role: roleCode,
         role_id: user.Role?.id ?? user.role_id,
       },
@@ -113,17 +141,19 @@ exports.checkSuperAdmin = async (req, res, next) => {
 // GET /api/setup/check-super-admin  (no params — just checks if any exists)
 exports.checkSetupComplete = async (req, res, next) => {
   try {
-    const superAdminRole = await Role.findOne({ where: { code: "super_admin" } });
-    
+    const superAdminRole = await Role.findOne({
+      where: { code: "super_admin" },
+    });
+
     if (!superAdminRole) {
       return res.json({ exists: false });
     }
 
     const superAdminUser = await HrisUser.findOne({
-      where: { 
+      where: {
         role_id: superAdminRole.id,
-        is_active: true
-      }
+        is_active: true,
+      },
     });
 
     res.json({ exists: !!superAdminUser });
@@ -135,14 +165,15 @@ exports.checkSetupComplete = async (req, res, next) => {
 // ─────────────────────────────────────────────────────────────
 // SHARED HELPER — createInviteToken
 //
-// Generates a raw token, stores the raw value on HrisUser.invite_token
-// AND stores the SHA-256 hash in PasswordResetToken (type = "invite")
-// so that authController.verifyResetToken and resetPassword can find
-// it through the same hashed-token lookup used by the forgot-password flow.
+// Generates a raw token, returns it (for the email link) plus its
+// SHA-256 hash. The raw token is never persisted anywhere — only the
+// hash is stored, in PasswordResetToken (type = "invite"), so
+// authController.verifyResetToken and resetPassword can look it up
+// the same way as the forgot-password flow.
 // ─────────────────────────────────────────────────────────────
 async function createInviteToken(employeeId) {
   const rawToken = crypto.randomBytes(32).toString("hex");
-  const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+  const tokenHash = hashToken(rawToken);
 
   // Invalidate any previous unused invite tokens for this employee
   await PasswordResetToken.update(
@@ -170,7 +201,7 @@ async function createInviteToken(employeeId) {
 // ────────────────────────────────
 exports.invite = async (req, res, next) => {
   try {
-    const { employee_id, email, name, role } = req.body;
+    const { employee_id, email, name, role_id } = req.body;
 
     if (!employee_id || !email || !name) {
       return res.status(400).json({
@@ -182,26 +213,24 @@ exports.invite = async (req, res, next) => {
     const rawToken = await createInviteToken(employee_id);
     const inviteLink = `${process.env.APP_BASE_URL}/login?token=${rawToken}`;
 
+    // Only the hash lives in PasswordResetToken (createInviteToken above).
+    // HrisUser itself never stores the raw or hashed token.
     const user = await HrisUser.create({
       employee_id,
-      email,
-      password_hash: null, // user sets their own password
-      role: role || "employee",
-      invite_token: rawToken,
+      role_id: role_id ?? null,
+      is_active: true,
       must_change_password: true,
+      granted_at: new Date(),
     });
 
     await sendInviteEmail({ toEmail: email, toName: name, inviteLink });
 
+    const { password_hash, invite_token, ...safeUser } = user.toJSON();
+
     res.status(201).json({
       success: true,
       message: `Invitation sent to ${email}`,
-      data: {
-        id: user.id,
-        employee_id: user.employee_id,
-        email: user.email,
-        role: user.role,
-      },
+      data: safeUser,
     });
   } catch (err) {
     next(err);
@@ -233,9 +262,9 @@ exports.resendInvite = async (req, res, next) => {
     const rawToken = await createInviteToken(id);
     const inviteLink = `${process.env.APP_BASE_URL}/login?token=${rawToken}`;
 
-    // Rotate the token on hris_users; clear password so they must set a new one
+    // Rotate: clear password so they must set a new one. The token itself
+    // only ever lives (hashed) in PasswordResetToken.
     await hrisUser.update({
-      invite_token: rawToken,
       password_hash: null,
       must_change_password: true,
     });
@@ -288,15 +317,10 @@ exports.updateUser = async (req, res, next) => {
       employeeStatus = Boolean(rawActive) ? "active" : "inactive";
     }
 
-    console.log(
-      `[updateUser] id=${id} role_id=${role_id} role_code=${role_code} is_active=${is_active} status=${employeeStatus}`,
-    );
-
     // ── Resolve role ──────────────────────────────────────────────────────
     let resolvedRole = null;
 
     if (role_id) {
-      // Direct UUID lookup — no name parsing needed
       resolvedRole = await Role.findByPk(role_id, { transaction });
 
       if (!resolvedRole) {
@@ -307,7 +331,6 @@ exports.updateUser = async (req, res, next) => {
         });
       }
     } else if (role_code) {
-      // Fallback: try matching by name (title-case) or exact code
       const nameFromCode = role_code
         .split("_")
         .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
@@ -326,10 +349,6 @@ exports.updateUser = async (req, res, next) => {
       }
     }
 
-    console.log(
-      `[updateUser] Resolved role: id=${resolvedRole?.id} name="${resolvedRole?.name}"`,
-    );
-
     // ── Update hris_users ─────────────────────────────────────────────────
     let hrisUser = await HrisUser.findOne({
       where: { employee_id: id },
@@ -337,9 +356,6 @@ exports.updateUser = async (req, res, next) => {
     });
 
     if (!hrisUser) {
-      console.log(
-        `[updateUser] No HrisUser found — creating for employee_id=${id}`,
-      );
       hrisUser = await HrisUser.create(
         {
           employee_id: id,
@@ -355,7 +371,6 @@ exports.updateUser = async (req, res, next) => {
       if (is_active !== undefined) hrisUpdates.is_active = is_active;
 
       if (Object.keys(hrisUpdates).length > 0) {
-        console.log(`[updateUser] Updating hris_users:`, hrisUpdates);
         await hrisUser.update(hrisUpdates, { transaction });
       }
     }
@@ -366,11 +381,10 @@ exports.updateUser = async (req, res, next) => {
     if (is_active !== undefined) employeeUpdates.is_active = is_active;
     if (resolvedRole) {
       employeeUpdates.role_id = resolvedRole.id;
-      employeeUpdates.role_title = resolvedRole.name; // keep the string column in sync
+      employeeUpdates.role_title = resolvedRole.name;
     }
 
     if (Object.keys(employeeUpdates).length > 0) {
-      console.log(`[updateUser] Updating employees:`, employeeUpdates);
       await Employee.update(employeeUpdates, { where: { id }, transaction });
     }
 
@@ -390,7 +404,6 @@ exports.updateUser = async (req, res, next) => {
     });
   } catch (err) {
     await transaction.rollback();
-    console.error("[updateUser] Error:", err.message);
     next(err);
   }
 };

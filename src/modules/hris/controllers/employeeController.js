@@ -4,6 +4,50 @@ const { QueryTypes } = require("sequelize");
 const { sequelize } = require("../../../config/database");
 const Employee = require("../../../models/hris/models/core/employee");
 const Role = require("../../../models/hris/models/core/role");
+const config = require("../../../config");
+
+// Columns from `employees` we're willing to expose/select.
+// (Excludes password_hash and any other sensitive/internal columns.)
+const EMPLOYEE_COLUMNS = `
+  e.id, e.employee_code, e.first_name, e.last_name, e.middle_name,
+  e.email, e.personal_email, e.phone, e.avatar_initials,
+  e.department_id, e.role_id, e.role_title, e.employment_type,
+  e.status, e.hire_date, e.end_date, e.last_login_at, e.is_active,
+  e.must_change_password, e.manager_id,
+  e.created_at, e.updated_at, e.deleted_at
+`;
+
+// Fields a client is allowed to set/update directly on an employee.
+// Anything else (is_active, must_change_password, password_hash,
+// role_id, employee_code, timestamps, etc.) must go through a
+// dedicated, authorized flow instead of open mass assignment.
+const ALLOWED_EMPLOYEE_FIELDS = [
+  "first_name",
+  "last_name",
+  "middle_name",
+  "email",
+  "personal_email",
+  "phone",
+  "department_id",
+  "role_title",
+  "employment_type",
+  "status",
+  "hire_date",
+  "end_date",
+  "manager_id",
+];
+
+function pickAllowed(body) {
+  const out = {};
+  for (const key of ALLOWED_EMPLOYEE_FIELDS) {
+    if (body[key] !== undefined) out[key] = body[key];
+  }
+  return out;
+}
+
+function errMessage(err) {
+  return config.env === "production" ? undefined : err.message;
+}
 
 // ────────────────────────────────
 // GET ALL EMPLOYEES
@@ -12,7 +56,7 @@ exports.getAllEmployees = async (req, res) => {
   try {
     const employees = await sequelize.query(
       `SELECT
-         e.*,
+         ${EMPLOYEE_COLUMNS},
          COALESCE(hu.role_id, e.role_id) AS role_id,
          r.name                          AS role_title
        FROM employees e
@@ -27,7 +71,9 @@ exports.getAllEmployees = async (req, res) => {
     return res.json(employees);
   } catch (err) {
     console.error("[getAllEmployees] Error:", err.message);
-    return res.status(500).json({ error: err.message });
+    return res
+      .status(500)
+      .json({ error: errMessage(err) || "Failed to fetch employees" });
   }
 };
 
@@ -38,7 +84,7 @@ exports.getEmployeeById = async (req, res) => {
   try {
     const [employee] = await sequelize.query(
       `SELECT
-         e.*,
+         ${EMPLOYEE_COLUMNS},
          COALESCE(hu.role_id, e.role_id) AS role_id,
          r.name                          AS role_title
        FROM employees e
@@ -61,7 +107,9 @@ exports.getEmployeeById = async (req, res) => {
     return res.json(employee);
   } catch (err) {
     console.error("[getEmployeeById] Error:", err.message);
-    return res.status(500).json({ error: err.message });
+    return res
+      .status(500)
+      .json({ error: errMessage(err) || "Failed to fetch employee" });
   }
 };
 
@@ -70,7 +118,8 @@ exports.getEmployeeById = async (req, res) => {
 // ────────────────────────────────
 exports.createEmployee = async (req, res) => {
   try {
-    const { role, ...rest } = req.body;
+    const { role } = req.body;
+    const fields = pickAllowed(req.body);
     let role_id = null;
 
     if (role) {
@@ -79,13 +128,32 @@ exports.createEmployee = async (req, res) => {
         return res.status(400).json({ error: "Invalid role provided" });
       }
       role_id = roleData.id;
+      fields.role_title = roleData.name;
     }
 
-    const employee = await Employee.create({ ...rest, role_id });
+    if (!fields.first_name || !fields.last_name || !fields.email) {
+      return res.status(400).json({
+        error: "first_name, last_name, and email are required",
+      });
+    }
+
+    const employeeCount = await Employee.count();
+    const employee = await Employee.create({
+      ...fields,
+      role_id,
+      employee_code: `EMP-${String(employeeCount + 1).padStart(4, "0")}`,
+      employment_type: fields.employment_type || "full_time",
+      hire_date: fields.hire_date || new Date(),
+      is_active: true,
+      must_change_password: true,
+    });
+
     return res.status(201).json(employee);
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: "Failed to create employee" });
+    return res
+      .status(500)
+      .json({ error: errMessage(err) || "Failed to create employee" });
   }
 };
 
@@ -99,7 +167,8 @@ exports.updateEmployee = async (req, res) => {
       return res.status(404).json({ error: "Employee not found" });
     }
 
-    const { role, ...rest } = req.body;
+    const { role } = req.body;
+    const fields = pickAllowed(req.body);
     let role_id = employee.role_id;
 
     if (role) {
@@ -108,13 +177,16 @@ exports.updateEmployee = async (req, res) => {
         return res.status(400).json({ error: "Invalid role provided" });
       }
       role_id = roleData.id;
+      fields.role_title = roleData.name;
     }
 
-    await employee.update({ ...rest, role_id });
+    await employee.update({ ...fields, role_id });
     return res.json(employee);
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: "Failed to update employee" });
+    return res
+      .status(500)
+      .json({ error: errMessage(err) || "Failed to update employee" });
   }
 };
 
@@ -131,7 +203,9 @@ exports.deleteEmployee = async (req, res) => {
     return res.json({ message: "Employee deleted" });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: "Failed to delete employee" });
+    return res
+      .status(500)
+      .json({ error: errMessage(err) || "Failed to delete employee" });
   }
 };
 
@@ -144,6 +218,8 @@ exports.getEmployeeCount = async (req, res) => {
     return res.json({ count });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: "Failed to fetch employee count" });
+    return res
+      .status(500)
+      .json({ error: errMessage(err) || "Failed to fetch employee count" });
   }
 };
