@@ -59,7 +59,8 @@ exports.getAllEmployees = async (req, res) => {
       `SELECT
          ${EMPLOYEE_COLUMNS},
          COALESCE(hu.role_id, e.role_id) AS role_id,
-         r.name                          AS role_title
+         r.name                          AS role_name,
+         r.code                          AS role_code
        FROM employees e
        LEFT JOIN hris_users hu
          ON hu.employee_id = e.id AND hu.is_active = true
@@ -87,7 +88,8 @@ exports.getEmployeeById = async (req, res) => {
       `SELECT
          ${EMPLOYEE_COLUMNS},
          COALESCE(hu.role_id, e.role_id) AS role_id,
-         r.name                          AS role_title
+         r.name                          AS role_name,
+         r.code                          AS role_code
        FROM employees e
        LEFT JOIN hris_users hu
          ON hu.employee_id = e.id AND hu.is_active = true
