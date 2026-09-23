@@ -35,6 +35,7 @@ const ALLOWED_EMPLOYEE_FIELDS = [
   "hire_date",
   "end_date",
   "manager_id",
+  "address",
 ];
 
 function pickAllowed(body) {
