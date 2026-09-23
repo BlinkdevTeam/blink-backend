@@ -13,7 +13,7 @@ const EMPLOYEE_COLUMNS = `
   e.email, e.personal_email, e.phone, e.avatar_initials,
   e.department_id, e.role_id, e.role_title, e.employment_type,
   e.status, e.hire_date, e.end_date, e.last_login_at, e.is_active,
-  e.must_change_password, e.manager_id,
+  e.must_change_password, e.manager_id, e.address, e.schedule,
   e.created_at, e.updated_at, e.deleted_at
 `;
 

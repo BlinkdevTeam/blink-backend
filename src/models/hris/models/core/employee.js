@@ -111,6 +111,16 @@ const Employee = sequelize.define(
       allowNull: true,
       references: { model: "employees", key: "id" },
     },
+
+    address: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+
+    schedule: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
   },
   {
     tableName: "employees",
