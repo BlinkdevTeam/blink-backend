@@ -36,6 +36,7 @@ const ALLOWED_EMPLOYEE_FIELDS = [
   "end_date",
   "manager_id",
   "address",
+  "schedule",
 ];
 
 function pickAllowed(body) {
@@ -53,14 +54,14 @@ function errMessage(err) {
 // ────────────────────────────────
 // GET ALL EMPLOYEES
 // ────────────────────────────────
+// employeeController.js
 exports.getAllEmployees = async (req, res) => {
   try {
     const employees = await sequelize.query(
       `SELECT
          ${EMPLOYEE_COLUMNS},
-         COALESCE(hu.role_id, e.role_id) AS role_id,
-         r.name                          AS role_name,
-         r.code                          AS role_code
+         COALESCE(hu.role_id, e.role_id) AS effective_role_id,
+         r.name                          AS role_name
        FROM employees e
        LEFT JOIN hris_users hu
          ON hu.employee_id = e.id AND hu.is_active = true
@@ -69,13 +70,12 @@ exports.getAllEmployees = async (req, res) => {
        WHERE e.deleted_at IS NULL`,
       { type: QueryTypes.SELECT },
     );
-
     return res.json(employees);
   } catch (err) {
-    console.error("[getAllEmployees] Error:", err.message);
-    return res
-      .status(500)
-      .json({ error: errMessage(err) || "Failed to fetch employees" });
+    console.error("Error fetching employees:", err);
+    return res.status(500).json({
+      message: "Failed to fetch employees",
+    });
   }
 };
 

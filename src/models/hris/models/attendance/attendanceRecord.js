@@ -15,6 +15,17 @@ const AttendanceRecord = sequelize.define(
     employee_id: {
       type: DataTypes.UUID,
       allowNull: false,
+      references: {
+        model: "employees",
+        key: "id",
+      },
+    },
+
+    status: {
+      type: DataTypes.STRING(20),
+      allowNull: false,
+      defaultValue: "present",
+      // present, remote, late, absent, on_leave
     },
 
     date: {
@@ -27,23 +38,43 @@ const AttendanceRecord = sequelize.define(
       allowNull: true,
     },
 
+    break_out: {
+      type: DataTypes.TIME,
+      allowNull: true,
+    },
+
+    break_in: {
+      type: DataTypes.TIME,
+      allowNull: true,
+    },
+
+    break_duration_mins: {
+      type: DataTypes.SMALLINT,
+      allowNull: true,
+      // computed: break_in - break_out, in minutes
+    },
+
     time_out: {
       type: DataTypes.TIME,
       allowNull: true,
     },
 
-    status: {
-      type: DataTypes.STRING,
-      defaultValue: "present",
-    },
-
-    remarks: {
-      type: DataTypes.STRING,
+    net_hours: {
+      type: DataTypes.DECIMAL(4, 2),
+      allowNull: true,
+      // computed: gross hours minus break
     },
   },
   {
     tableName: "attendance_records",
     timestamps: true,
+    underscored: true,
+    indexes: [
+      {
+        unique: true,
+        fields: ["employee_id", "date"],
+      },
+    ],
   },
 );
 

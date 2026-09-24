@@ -96,6 +96,10 @@ app.use("/api", protect, statsRoutes);
 const healthRoutes = require("./modules/auth/routes/health");
 app.use("/api", healthRoutes);
 
+// ── ATTENDANCE ROUTES (protected) ───────────────────────────
+const attendanceRoutes = require("./modules/hris/routes/attendanceRoutes");
+app.use("/api/attendance", protect, attendanceRoutes);
+
 // ── ROOT CHECK ─────────────────────────────────────────────
 app.get("/", (_req, res) => {
   res.json({
