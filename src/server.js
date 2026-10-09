@@ -100,6 +100,10 @@ app.use("/api", healthRoutes);
 const attendanceRoutes = require("./modules/hris/routes/attendanceRoutes");
 app.use("/api/attendance", protect, attendanceRoutes);
 
+// ── LEAVE BALANCE ROUTES (protected) ────────────────────────
+const leaveBalanceRoutes = require("./modules/hris/routes/leaveBalanceRoutes");
+app.use("/api/leave-balances", protect, leaveBalanceRoutes);
+
 // ── ROOT CHECK ─────────────────────────────────────────────
 app.get("/", (_req, res) => {
   res.json({
